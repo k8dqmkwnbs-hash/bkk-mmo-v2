@@ -6,56 +6,74 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 const RANKS = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
-const SKINS = {
-    default: "https://get.wallhere.com/photo/illustration-video-games-artwork-swords-Chinese-style-1915995.jpg",
-    armor: "https://get.wallhere.com/photo/illustration-video-games-fantasy-armor-warrior-Chinese-style-1916001.jpg",
-    sword: "https://get.wallhere.com/photo/Chinese-style-swordsman-fantasy-art-warrior-dragon-1915984.jpg",
-    beast: "https://get.wallhere.com/photo/fantasy-art-dragon-Chinese-style-artwork-digital-art-1916005.jpg"
+
+// ⚔️ ฟังก์ชันสร้างไอเทม 12 ชิ้นต่อหมวด (8 ปกติ + 4 หายาก)
+function generateItems(category, baseStat) {
+    let items = [];
+    for(let i=1; i<=12; i++) {
+        let isRare = i > 8;
+        items.push({
+            name: (isRare ? "⭐ " : "") + category + " ขั้นที่ " + i,
+            price: isRare ? Math.pow(i, 5) * 50 : i * i * 150,
+            stat: isRare ? i * i * 50 : i * 15,
+            type: baseStat,
+            rare: isRare
+        });
+    }
+    return items;
+}
+
+const ALL_ITEMS = {
+    weapon: generateItems("อาวุธเทพ", "atk"),
+    armor: generateItems("ชุดเซียน", "def"),
+    mount: generateItems("สัตว์เทพ", "atk"),
+    accessory: generateItems("เครื่องราง", "def")
 };
 
 let players = {};
 
-// --- ⚙️ ระบบโลก (Auto-Loop) ---
 setInterval(() => {
     Object.keys(players).forEach(id => {
         let p = players[id];
-        // บำเพ็ญเพียรอัตโนมัติ
-        p.exp += 5 + (p.level * 0.5);
-        p.gold += 2 + (p.level * 0.2);
-        
-        if (p.exp >= 100) {
-            p.level++;
-            p.exp = 0;
-            io.to(id).emit("level_up", p.level);
+        if (p.location !== "home") {
+            // 📈 สูตร EXP: เกินขั้น 5 (Level 25) จะขึ้นยากขึ้น 5 เท่า
+            let difficulty = p.level > 25 ? 5 : 1;
+            p.exp += (10 / difficulty); 
+            p.gold += (5 + Math.floor(p.level/2));
+            
+            if (p.exp >= 100) { 
+                p.level++; 
+                p.exp = 0; 
+                io.to(id).emit("log", "✨ บรรลุเลเวล " + p.level + "!");
+            }
         }
     });
     io.emit("update_all", players);
-}, 3000);
+}, 2000);
 
 io.on("connection", (socket) => {
-    socket.on("join", (saveData) => {
-        players[socket.id] = saveData || { hp: 100, level: 1, exp: 0, gold: 0, gear: 'default', atk: 10, def: 5 };
+    socket.on("join", (save) => {
+        players[socket.id] = save || { level: 1, exp: 0, gold: 100, atk: 10, def: 10, location: "home", gear: [] };
         socket.emit("update_client", players[socket.id]);
     });
 
-    socket.on("click_cultivate", () => {
-        let p = players[socket.id];
-        if(p) { p.exp += 10; p.gold += 5; socket.emit("update_client", p); }
-    });
+    socket.on("travel", (loc) => { if(players[socket.id]) players[socket.id].location = loc; });
 
-    socket.on("gm_power", (data) => {
-        if(data.code === "1234GMSECRET") {
-            let p = players[socket.id];
-            if(p) { p.gold += 50000; p.level += 20; socket.emit("update_client", p); }
-        }
-    });
-
-    socket.on("buy", (item) => {
+    socket.on("buy", (data) => {
         let p = players[socket.id];
-        if(p && p.gold >= 500) {
-            p.gold -= 500; p.gear = item; p.atk += 50;
+        let item = ALL_ITEMS[data.cat][data.idx];
+        if(p && p.gold >= item.price) {
+            p.gold -= item.price;
+            p[item.type] += item.stat;
+            p.gear.push(item.name);
             socket.emit("update_client", p);
-        }
+            socket.emit("log", "✅ ได้รับ " + item.name);
+        } else { socket.emit("log", "❌ ทองไม่พอ!"); }
+    });
+
+    socket.on("gm_power", () => {
+        let p = players[socket.id];
+        if(p) { p.gold += 1000000; p.level += 20; socket.emit("update_client", p); }
     });
 
     socket.on("disconnect", () => delete players[socket.id]);
@@ -66,98 +84,118 @@ app.get("/", (req, res) => {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>IMMORTAL SAGA: ARIYA</title>
+    <title>ARIYA IMMORTAL v4.0</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background: #000; color: #fff; font-family: 'Sarabun', sans-serif; margin: 0; text-align: center; overflow: hidden; }
-        .bg-layer { position: fixed; width: 100%; height: 100%; background: url('https://get.wallhere.com/photo/illustration-fantasy-art-mountains-clouds-floating-island-Chinese-style-1916010.jpg') center/cover; filter: blur(3px) brightness(0.4); z-index: -1; }
-        .screen { display: none; padding: 20px; animation: slideUp 0.6s ease; height: 100vh; }
-        .active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        
-        .char-box { position: relative; width: 280px; height: 380px; border: 4px solid #d4af37; border-radius: 15px; overflow: hidden; box-shadow: 0 0 40px #d4af37; background: #111; }
-        .char-box img { width: 100%; height: 100%; object-fit: cover; }
-        .status-bar { position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.8); padding: 10px 0; }
-        
-        .rank-text { font-size: 32px; font-weight: bold; color: #d4af37; text-shadow: 0 0 15px #d4af37; margin: 10px 0; }
-        .btn { background: linear-gradient(180deg, #d4af37, #8a6d3b); color: #000; border: none; padding: 15px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; width: 250px; font-size: 18px; text-transform: uppercase; }
-        
-        .progress-container { width: 280px; height: 10px; background: #222; border-radius: 5px; margin: 15px 0; border: 1px solid #d4af37; overflow: hidden; }
-        #exp-fill { background: #d4af37; height: 100%; width: 0%; transition: 0.3s; box-shadow: 0 0 10px #d4af37; }
-        
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; width: 280px; gap: 10px; margin-bottom: 20px; font-size: 14px; }
-        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        body { background: #000; color: #d4af37; font-family: 'Tahoma'; text-align: center; margin: 0; }
+        .screen { display: none; padding: 15px; flex-direction: column; align-items: center; }
+        .active { display: flex; }
+        .btn { background: #d4af37; color: #000; border: none; padding: 12px; margin: 5px; cursor: pointer; border-radius: 5px; font-weight: bold; width: 90%; }
+        .rare { background: linear-gradient(90deg, #ff00ff, #d4af37) !important; color: #fff !important; border: 2px solid #fff; }
+        .bar { width: 280px; height: 15px; background: #222; border: 1px solid #d4af37; border-radius: 10px; overflow: hidden; margin: 10px; }
+        #exp-fill { background: #d4af37; height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px #d4af37; }
+        .item-list { width: 100%; height: 60vh; overflow-y: scroll; border: 1px solid #333; margin-top: 10px; }
+        .card { background: #111; border-bottom: 1px solid #333; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .tab-btn { background: #222; color: #d4af37; border: 1px solid #d4af37; padding: 5px; font-size: 11px; width: 23%; }
     </style>
 </head>
 <body>
-    <div class="bg-layer"></div>
     <audio id="bgm" loop src="https://www.chosic.com/wp-content/uploads/2021/07/The-Grand-Final-Epic-Modern-Chinese-Music.mp3"></audio>
 
     <div id="home" class="screen active">
-        <h1 onclick="secretGM()" style="color:#d4af37; letter-spacing:5px; margin:0;">IMMORTAL SAGA</h1>
-        <div id="rank-name" class="rank-text">รวบรวมลมปราณ</div>
-        
-        <div class="char-box">
-            <img id="avatar" src="">
-            <div class="status-bar">
-                <div class="stats-grid">
-                    <span>⚔️ ATK: <b id="atk">10</b></span>
-                    <span>🛡️ DEF: <b id="def">5</b></span>
-                </div>
-                <div>💰 ทอง: <b id="gold">0</b></div>
-            </div>
+        <h1 onclick="socket.emit('gm_power')" style="margin:5px;">🏯 สำนักปฐมกาล</h1>
+        <div style="background:rgba(255,255,255,0.1); padding:10px; border-radius:10px; width:90%;">
+            ⚔️ ATK: <b id="atk">0</b> | 🛡️ DEF: <b id="def">0</b> | 💰 ทอง: <b id="gold">0</b>
         </div>
+        <h2 id="rank" style="color:#fff; margin:10px 0;">รวบรวมลมปราณ</h2>
+        <div class="bar"><div id="exp-fill"></div></div>
+        <p id="exp-text" style="font-size:12px;">อีก 100 EXP เพื่อเลื่อนระดับ</p>
+        <button class="btn" onclick="showS('map')">🗺️ ออกเดินทาง / บำเพ็ญ</button>
+        <button class="btn" style="background:#8a6d3b" onclick="showS('shop')">💎 ตลาดมืด (4 หมวดเทพ)</button>
+        <button class="btn" style="background:#444; color:#fff;" onclick="document.getElementById('bgm').play()">🎵 เปิดเพลง</button>
+    </div>
 
-        <div class="progress-container"><div id="exp-fill"></div></div>
-        <div style="font-size:12px; color:#d4af37;">ตบะบำเพ็ญ (AUTO RUNNING...)</div>
+    <div id="map" class="screen">
+        <h2>🗺️ เลือกพื้นที่บำเพ็ญ</h2>
+        <button class="btn" onclick="travel('ป่าหมอก')">🌲 ป่าหมอก (LV 1-25)</button>
+        <button class="btn" onclick="travel('หุบเขาเทพ')">🌋 หุบเขาเทพ (LV 26++)</button>
+        <button class="btn" style="background:#444; color:#fff;" onclick="showS('home')">🏠 กลับสำนัก</button>
+    </div>
 
-        <button class="btn" onclick="socket.emit('click_cultivate')">⚡ เร่งการบำเพ็ญ</button>
-        <button class="btn" style="background:#222; color:#d4af37; border:1px solid #d4af37;" onclick="showScreen('shop')">🎁 หอสมบัติเทพ</button>
+    <div id="battle" class="screen">
+        <h2 id="loc-display">กำลังสู้...</h2>
+        <img src="https://img.freepik.com/free-photo/majestic-dragon-fantasy-landscape_23-2151113444.jpg" style="width:250px; border-radius:15px; border:2px solid #d4af37;">
+        <div class="bar"><div id="exp-fill2" style="background:#d4af37; height:100%;"></div></div>
+        <p id="exp-text2">บำเพ็ญเพียรอัตโนมัติ...</p>
+        <button class="btn" onclick="travel('home')">🏠 กลับสำนัก</button>
     </div>
 
     <div id="shop" class="screen">
-        <h1 style="color:#d4af37;">หอสมบัติ (500 ทอง)</h1>
-        <button class="btn" onclick="socket.emit('buy','sword')">🗡️ กระบี่ตัดดารา</button>
-        <button class="btn" onclick="socket.emit('buy','armor')">🛡️ เกราะมังกรทอง</button>
-        <button class="btn" onclick="socket.emit('buy','beast')">🐉 มังกรปฐมกาล</button>
-        <br>
-        <button class="btn" style="background:#444; color:#fff;" onclick="showScreen('home')">🏠 กลับสำนัก</button>
+        <div style="display:flex; justify-content:space-between; width:100%;">
+            <button class="tab-btn" onclick="loadShop('weapon')">อาวุธ</button>
+            <button class="tab-btn" onclick="loadShop('armor')">ชุด</button>
+            <button class="tab-btn" onclick="loadShop('mount')">สัตว์ขี่</button>
+            <button class="tab-btn" onclick="loadShop('accessory')">เครื่องประดับ</button>
+        </div>
+        <div id="shop-items" class="item-list"></div>
+        <button class="btn" onclick="showS('home')">🏠 กลับสำนัก</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         const ranks = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
-        const skins = ${JSON.stringify(SKINS)};
-        
-        let saved = JSON.parse(localStorage.getItem('ariya_immortal_save'));
-        socket.emit('join', saved);
+        const allItems = ${JSON.stringify(ALL_ITEMS)};
 
-        function showScreen(id) {
+        function showS(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            document.getElementById('bgm').play().catch(()=>{});
         }
 
-        function secretGM() {
-            let p = prompt("รหัสลับเจ้าสำนัก:");
-            if(p === "1234GMSECRET") socket.emit('gm_power', {code: p});
+        function travel(loc) {
+            if(loc === 'home') showS('home'); else showS('battle');
+            socket.emit('travel', loc);
+            document.getElementById('loc-display').innerText = loc;
         }
+
+        function loadShop(cat) {
+            const list = document.getElementById('shop-items');
+            list.innerHTML = "";
+            allItems[cat].forEach((it, i) => {
+                list.innerHTML += \`
+                    <div class="card">
+                        <div style="text-align:left">
+                            <b style="color:\${it.rare?'#ff00ff':'#d4af37'}">\${it.name}</b><br>
+                            <small>💰 \${it.price} | +\${it.stat} \${it.type.toUpperCase()}</small>
+                        </div>
+                        <button class="btn \${it.rare?'rare':''}" style="width:70px; font-size:10px;" onclick="socket.emit('buy',{cat:'\${cat}',idx:\${i}})">ซื้อ</button>
+                    </div>\`;
+            });
+        }
+
+        let saved = JSON.parse(localStorage.getItem('immortal_v4'));
+        socket.emit('join', saved);
 
         socket.on("update_client", (p) => {
-            localStorage.setItem('ariya_immortal_save', JSON.stringify(p));
-            document.getElementById('avatar').src = skins[p.gear] || skins.default;
+            localStorage.setItem('immortal_v4', JSON.stringify(p));
+            document.getElementById('atk').innerText = p.atk;
+            document.getElementById('def').innerText = p.def;
             document.getElementById('gold').innerText = Math.floor(p.gold);
-            document.getElementById('atk').innerText = p.atk + (p.level * 5);
-            document.getElementById('def').innerText = p.def + (p.level * 2);
+            
+            let expLeft = 100 - Math.floor(p.exp);
+            document.getElementById('exp-text').innerText = "ขาดอีก " + expLeft + " EXP เพื่อบรรลุขั้นถัดไป";
+            document.getElementById('exp-text2').innerText = "อีก " + expLeft + " EXP จะอัปเวล...";
             document.getElementById('exp-fill').style.width = p.exp + "%";
+            document.getElementById('exp-fill2').style.width = p.exp + "%";
             
             let rIdx = Math.min(Math.floor((p.level-1)/5), ranks.length-1);
-            document.getElementById('rank-name').innerText = ranks[rIdx];
+            document.getElementById('rank').innerText = ranks[rIdx] + " (Lv."+p.level+")";
+            document.getElementById('rank').style.color = p.level > 25 ? '#00ffff' : '#fff';
         });
 
-        socket.on("update_all", (data) => {
-            if(data[socket.id]) socket.emit('update_client', data[socket.id]);
-        });
+        socket.on("update_all", (data) => { if(data[socket.id]) socket.emit('update_client', data[socket.id]); });
+        socket.on("log", (m) => console.log(m));
+        loadShop('weapon'); // โหลดหมวดอาวุธรอไว้
     </script>
 </body>
 </html>
@@ -165,4 +203,4 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("The Ultimate Immortal System is Live!"));
+server.listen(PORT, () => console.log("Immortal System v4.0 Active!"));
