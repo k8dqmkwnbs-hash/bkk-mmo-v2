@@ -1,200 +1,106 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-
 const app = express();
 const server = http.createServer(app);
-// ปรับค่า cors เพื่อให้เชื่อมต่อได้จากทุกที่
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
-/* =========================
-   🌍 WORLD STATE
-========================= */
-let world = {
-  chaos: 0,
-  players: {}, // เก็บข้อมูลผู้เล่นทุกคน
-  events: [],
-  bosses: []
-};
+let world = { chaos: 0, logs: [] };
+let players = {};
 
-/* =========================
-   👑 GM SYSTEM
-========================= */
-const GM_CODE = "1234GMSECRET";
-let gms = {};
-
-/* =========================
-   🧠 GAME MASTER AI (LOGIC)
-========================= */
-function gameMaster(input, socketId) {
-  let msg = input.toLowerCase();
-  let p = world.players[socketId];
-
-  if (msg.includes("attack")) {
-    world.chaos += 10;
-    return "⚔️ คุณโจมตีสำเร็จ โลกเริ่มวุ่นวายขึ้น! (+10 Chaos)";
-  }
-
-  if (msg.includes("status")) {
-    return `🌍 โลกวุ่นวาย: ${world.chaos}% | 🧘 เลเวลของคุณ: ${p.level} (EXP: ${p.exp}/100)`;
-  }
-
-  if (msg.includes("บำเพ็ญ") || msg.includes("meditate")) {
-    p.exp += 25;
-    let res = "🧘 ท่านนั่งสมาธิได้รับตบะ +25";
-    if (p.exp >= 100) {
-      p.level += 1;
-      p.exp = 0;
-      io.emit("system", `✨ ยินดีด้วย! จอมยุทธ [${socketId.slice(0,4)}] บรรลุเลเวล ${p.level} แล้ว!`);
-      res = "🌟 เลเวลอัป! พลังวัตรของท่านเพิ่มพูนขึ้น";
-    }
-    return res;
-  }
-
-  if (msg.includes("help")) {
-    return "📜 คำสั่ง: attack (โจมตี), บำเพ็ญ (เพิ่มเลเวล), status (เช็คค่าพลัง)";
-  }
-
-  return "❓ ไม่เข้าใจคำสั่ง ลองพิมพ์ 'help'";
-}
-
-/* =========================
-   🚀 SOCKET IO
-========================= */
-io.on("connection", (socket) => {
-  console.log("Player connected:", socket.id);
-
-  // สร้างข้อมูลตัวละครใหม่เมื่อคนเข้าเว็บ
-  world.players[socket.id] = {
-    name: "Player_" + socket.id.slice(0, 4),
-    hp: 100,
-    level: 1,
-    exp: 0
-  };
-
-  socket.emit("system", "🐉 ยินดีต้อนรับสู่โลกบำเพ็ญเพียร! พิมพ์ 'help' เพื่อดูวิธีเล่น");
-
-  socket.on("message", (data) => {
-    let reply = gameMaster(data, socket.id);
-    io.emit("chat", {
-      id: socket.id.slice(0, 4),
-      msg: data,
-      reply: reply
+// ระบบรันโลกอัตโนมัติ (รันทุก 5 วินาที)
+setInterval(() => {
+    Object.keys(players).forEach(id => {
+        let p = players[id];
+        // สุ่มเหตุการณ์
+        let chance = Math.random();
+        if (chance > 0.7) {
+            p.exp += 20;
+            io.to(id).emit("log", "🧘 ท่านเข้าสู่ภวังค์... ได้รับตบะ +20");
+        } else if (chance > 0.4) {
+            p.hp -= 5;
+            io.to(id).emit("log", "⚔️ ปะทะอสูรข้างทาง! เสียเลือด -5");
+        }
+        
+        // เช็คเลเวลอัป
+        if (p.exp >= 100) {
+            p.level += 1; p.exp = 0; p.hp = 100;
+            io.emit("broadcast", `✨ จอมยุทธ [${id.slice(0,4)}] บรรลุขั้นพลังเลเวล ${p.level}!`);
+        }
+        if (p.hp <= 0) {
+            p.hp = 100; p.exp = Math.floor(p.exp/2);
+            io.to(id).emit("log", "💀 ท่านพ่ายแพ้... เสียตบะครึ่งหนึ่งและจุติใหม่");
+        }
     });
-  });
+    io.emit("update_world", { players, chaos: world.chaos });
+}, 3000);
 
-  socket.on("gm_login", (code) => {
-    if (code === GM_CODE) {
-      gms[socket.id] = true;
-      socket.emit("gm_status", "✅ GM LOGIN SUCCESS");
-    } else {
-      socket.emit("gm_status", "❌ WRONG CODE");
-    }
-  });
+io.on("connection", (socket) => {
+    players[socket.id] = { hp: 100, level: 1, exp: 0 };
+    socket.emit("log", "🐉 ยินดีต้อนรับสู่สำนัก... ระบบเริ่มบำเพ็ญอัตโนมัติแล้ว");
 
-  socket.on("gm_command", (cmd) => {
-    if (!gms[socket.id]) return;
-    if (cmd.type === "boss") {
-      world.bosses.push(cmd.name);
-      io.emit("system", "👹 BOSS ปรากฏตัว: " + cmd.name);
-    }
-    if (cmd.type === "chaos") {
-      world.chaos += cmd.value;
-      io.emit("system", "🌍 GM ปรับค่าความวุ่นวายโลกเป็น: " + world.chaos);
-    }
-  });
+    socket.on("gm_boss", () => {
+        io.emit("broadcast", "👹 BOSS: มังกรทมิฬ ปรากฏตัว! ทุกคนได้รับอันตราย!");
+        Object.values(players).forEach(p => p.hp -= 30);
+    });
 
-  socket.on("disconnect", () => {
-    delete world.players[socket.id];
-    delete gms[socket.id];
-  });
+    socket.on("disconnect", () => delete players[socket.id]);
 });
 
-/* =========================
-   🌐 FRONTEND (หน้าจอเกม)
-========================= */
 app.get("/", (req, res) => {
-  res.send(`
+    res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MMO BKK SYSTEM</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AUTO CULTIVATION MMO</title>
     <style>
-        body { font-family: 'Courier New', monospace; background:#000; color:#0f0; padding:15px; }
-        #chat { height:350px; overflow-y:scroll; border:2px solid #0f0; padding:10px; background:#050505; margin-bottom:10px; }
-        .input-group { display: flex; gap: 5px; margin-bottom: 20px; }
-        input { background:#111; color:#0f0; border:1px solid #0f0; padding:10px; flex-grow: 1; }
-        button { background:#0f0; color:#000; border:none; padding:10px 15px; font-weight:bold; cursor:pointer; }
-        .gm-panel { border-top: 2px dashed #f00; padding-top:15px; opacity: 0.8; }
-        .reply { color: #ffff00; }
+        body { background: #080808; color: #0f0; font-family: 'Arial', sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .stats-card { background: #1a1a1a; padding: 20px; border-radius: 10px; border: 2px solid #0f0; width: 90%; max-width: 400px; margin-top: 20px; }
+        .bar-bg { background: #333; height: 20px; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+        #hp-bar { background: #ff4444; width: 100%; height: 100%; transition: 0.5s; }
+        #exp-bar { background: #44ff44; width: 0%; height: 100%; transition: 0.5s; }
+        #log-box { width: 90%; max-width: 400px; height: 200px; background: #000; border: 1px solid #444; margin-top: 20px; overflow-y: scroll; padding: 10px; font-size: 14px; }
+        .broadcast { color: cyan; font-weight: bold; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        button { background: #f00; color: #fff; border: none; padding: 10px; margin-top: 20px; cursor: pointer; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h2>🌍 MMO BKK SYSTEM</h2>
-    <div id="chat"></div>
-
-    <div class="input-group">
-        <input id="msg" placeholder="พิมพ์คำสั่ง (บำเพ็ญ, attack, status)..." />
-        <button onclick="send()">SEND</button>
+    <h1>🌍 MMO AUTO-BKK</h1>
+    <div class="stats-card">
+        <h3>📍 สถานะของท่าน (Lv.<span id="lv">1</span>)</h3>
+        HP: <div class="bar-bg"><div id="hp-bar"></div></div>
+        EXP: <div class="bar-bg"><div id="exp-bar"></div></div>
     </div>
-
-    <div class="gm-panel">
-        <h3>👑 GM PANEL</h3>
-        <div class="input-group">
-            <input id="gmc" type="password" placeholder="GM CODE" />
-            <button onclick="loginGM()" style="background:#f00; color:#fff;">LOGIN</button>
-        </div>
-        <button onclick="spawnBoss()">SPAWN BOSS</button>
-        <button onclick="addChaos()">MAX CHAOS</button>
-    </div>
+    <div id="log-box"></div>
+    <button onclick="socket.emit('gm_boss')">👹 GM: SPAWN BOSS (TEST)</button>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const chatDiv = document.getElementById("chat");
+        const logBox = document.getElementById("log-box");
 
-        function send(){
-            let msgInput = document.getElementById("msg");
-            if(msgInput.value) {
-                socket.emit("message", msgInput.value);
-                msgInput.value = "";
+        socket.on("log", m => {
+            logBox.innerHTML = "<div>" + m + "</div>" + logBox.innerHTML;
+        });
+
+        socket.on("broadcast", m => {
+            logBox.innerHTML = "<div class='broadcast'>📢 " + m + "</div>" + logBox.innerHTML;
+        });
+
+        socket.on("update_world", data => {
+            const me = data.players[socket.id];
+            if(me) {
+                document.getElementById("lv").innerText = me.level;
+                document.getElementById("hp-bar").style.width = me.hp + "%";
+                document.getElementById("exp-bar").style.width = me.exp + "%";
             }
-        }
-
-        function loginGM(){
-            socket.emit("gm_login", document.getElementById("gmc").value);
-        }
-
-        function spawnBoss(){
-            socket.emit("gm_command", { type: "boss", name: "มังกรทมิฬ (Shadow Dragon)" });
-        }
-
-        function addChaos(){
-            socket.emit("gm_command", { type: "chaos", value: 100 });
-        }
-
-        socket.on("chat", (data) => {
-            chatDiv.innerHTML += "<p><b>[" + data.id + "]</b>: " + data.msg + "<br><span class='reply'>👉 " + data.reply + "</span></p>";
-            chatDiv.scrollTop = chatDiv.scrollHeight;
         });
-
-        socket.on("system", (msg) => {
-            chatDiv.innerHTML += "<p style='color:#00ffff'>📢 " + msg + "</p>";
-            chatDiv.scrollTop = chatDiv.scrollHeight;
-        });
-
-        socket.on("gm_status", (msg) => { alert(msg); });
     </script>
 </body>
 </html>
-  `);
+    `);
 });
 
-// ใช้ Port จาก Environment หรือ 3000
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log("🔥 สำนักเปิดแล้วที่ Port: " + PORT);
-});
+server.listen(PORT, () => console.log("Game Ready!"));
