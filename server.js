@@ -7,7 +7,6 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const RANKS = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
 
-// 🖼️ ฐานข้อมูลร่างจำแลงและฉากหลัง (เปลี่ยนตามขั้น)
 const EVOLUTION = [
     { img: "https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=300", bg: "#1a1a1a" },
     { img: "https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=80&w=300", bg: "#0d1b2a" },
@@ -20,7 +19,6 @@ const EVOLUTION = [
     { img: "https://images.unsplash.com/photo-1634157703702-3c124b455499?q=80&w=300", bg: "#000000" }
 ];
 
-// ⚔️ สร้างไอเทม 48 ชิ้น
 const SHOP = {
     weapon: Array.from({length: 12}, (_, i) => ({ name: "กระบี่ขั้น " + (i+1), price: Math.pow(i+1, 5) * 100, stat: (i+1) * 500 })),
     armor: Array.from({length: 12}, (_, i) => ({ name: "ชุดขั้น " + (i+1), price: Math.pow(i+1, 5) * 100, stat: (i+1) * 300 })),
@@ -34,14 +32,11 @@ setInterval(() => {
     Object.keys(players).forEach(id => {
         let p = players[id];
         if (p.isAuto) {
-            let mult = p.level > 25 ? 0.2 : 1; // เลเวล 25+ ขึ้นยากขึ้น 5 เท่า
+            let mult = p.level > 25 ? 0.2 : 1;
             p.exp += (5 * mult);
             p.gold += (Math.floor(p.level/2) + 10);
-            
-            // สูตรคำนวณพลังทวีคูณ (Scale by Level)
             p.atk = Math.floor((p.bAtk + (p.level * 100)) * Math.pow(1.15, p.level));
             p.def = Math.floor((p.bDef + (p.level * 50)) * Math.pow(1.12, p.level));
-
             if (p.exp >= 100) { p.level++; p.exp = 0; }
         }
     });
@@ -61,7 +56,7 @@ io.on("connection", (socket) => {
             p.gold -= item.price;
             if(d.cat === 'weapon' || d.cat === 'mount') p.bAtk += item.stat;
             else p.bDef += item.stat;
-            socket.emit("log", "บ่มเพาะ " + item.name + " สำเร็จ!");
+            socket.emit("log", "บ่มเพาะสำเร็จ!");
         }
     });
     socket.on("gm", (c) => { if(c === "ARIYA_POWER") { players[socket.id].gold += 5000000; players[socket.id].level += 20; } });
@@ -79,65 +74,56 @@ app.get("/", (req, res) => {
     <style>
         body { background: #000; color: #fff; font-family: 'Kanit', sans-serif; margin: 0; padding-bottom: 70px; }
         .container { padding: 15px; display: flex; flex-direction: column; align-items: center; }
-        .card { background: rgba(255,255,255,0.05); border: 1px solid #d4af37; border-radius: 20px; padding: 20px; width: 90%; text-align: center; box-shadow: 0 0 20px #d4af3733; }
-        .rank-name { font-size: 26px; font-weight: 700; color: #d4af37; text-shadow: 0 0 10px #d4af37; margin-bottom: 10px; }
-        .avatar-img { width: 150px; height: 150px; border-radius: 50%; border: 3px solid #d4af37; object-fit: cover; margin-bottom: 15px; }
-        .bar-bg { width: 100%; height: 12px; background: #222; border-radius: 6px; overflow: hidden; margin: 10px 0; border: 1px solid #444; }
+        .card { background: rgba(255,255,255,0.05); border: 1px solid #d4af37; border-radius: 20px; padding: 20px; width: 90%; text-align: center; }
+        .rank-name { font-size: 26px; font-weight: 700; color: #d4af37; text-shadow: 0 0 10px #d4af37; }
+        .avatar-img { width: 150px; height: 150px; border-radius: 50%; border: 3px solid #d4af37; object-fit: cover; }
+        .bar-bg { width: 100%; height: 12px; background: #222; border-radius: 6px; overflow: hidden; margin: 10px 0; }
         #bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #d4af37, #fff); transition: 0.3s; }
         .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin: 15px 0; }
-        .stat-val { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; border: 1px solid #333; font-size: 14px; }
-        .btn-action { background: #d4af37; color: #000; border: none; padding: 15px; border-radius: 50px; width: 100%; font-weight: 700; font-size: 18px; cursor: pointer; }
-        .btn-active { background: #44ff44; box-shadow: 0 0 20px #44ff44; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .stat-val { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; border: 1px solid #333; }
+        .btn-action { background: #d4af37; color: #000; border: none; padding: 15px; border-radius: 50px; width: 100%; font-weight: 700; }
+        .btn-active { background: #44ff44; box-shadow: 0 0 20px #44ff44; }
         .tab-box { display: none; width: 100%; margin-top: 20px; }
         .tab-active { display: block; }
-        .item-list { height: 300px; overflow-y: scroll; text-align: left; background: #111; padding: 10px; border-radius: 10px; }
-        .item-card { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding: 10px 0; font-size: 13px; }
+        .item-list { height: 300px; overflow-y: scroll; background: #111; padding: 10px; border-radius: 10px; }
+        .item-card { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding: 10px 0; }
         .nav { position: fixed; bottom: 0; width: 100%; background: #111; display: flex; border-top: 1px solid #d4af37; height: 65px; }
         .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; }
     </style>
 </head>
 <body>
     <audio id="bgm" loop src="https://www.chosic.com/wp-content/uploads/2021/07/The-Grand-Final-Epic-Modern-Chinese-Music.mp3"></audio>
-
     <div class="container">
         <div class="card">
             <div id="rank" class="rank-name" onclick="gm()">รวบรวมลมปราณ</div>
             <img id="avatar" class="avatar-img" src="">
             <div style="font-size:12px;">เลเวล <span id="lv">1</span> | <span id="exp-txt">0</span>%</div>
             <div class="bar-bg"><div id="bar-fill"></div></div>
-            
             <div class="stats-row">
-                <div class="stat-item stat-val">⚔️ ATK<br><b id="atk">0</b></div>
-                <div class="stat-item stat-val">🛡️ DEF<br><b id="def">0</b></div>
-                <div class="stat-item stat-val" style="grid-column: span 2;">💰 ทองในคลัง: <b id="gold">0</b></div>
+                <div class="stat-val">⚔️ ATK<br><b id="atk">0</b></div>
+                <div class="stat-val">🛡️ DEF<br><b id="def">0</b></div>
+                <div class="stat-val" style="grid-column: span 2;">💰 ทอง: <b id="gold">0</b></div>
             </div>
-            
-            <button id="btn" class="btn-action" onclick="toggle()">🧘 เริ่มการบำเพ็ญ</button>
+            <button id="btn" class="btn-action" onclick="toggle()">🧘 เริ่มบำเพ็ญ</button>
         </div>
-
         <div id="tab-shop" class="tab-box">
             <div style="display:flex; gap:5px; margin-bottom:10px;">
-                <button onclick="renderShop('weapon')" style="flex:1; padding:5px;">ดาบ</button>
-                <button onclick="renderShop('armor')" style="flex:1; padding:5px;">ชุด</button>
-                <button onclick="renderShop('mount')" style="flex:1; padding:5px;">สัตว์</button>
-                <button onclick="renderShop('acc')" style="flex:1; padding:5px;">ขลัง</button>
+                <button onclick="renderShop('weapon')" style="flex:1;">ดาบ</button>
+                <button onclick="renderShop('armor')" style="flex:1;">ชุด</button>
+                <button onclick="renderShop('mount')" style="flex:1;">สัตว์</button>
+                <button onclick="renderShop('acc')" style="flex:1;">เครื่องราง</button>
             </div>
             <div id="shop-list" class="item-list"></div>
         </div>
-        
         <div id="tab-battle" class="tab-box tab-active" style="text-align:center; padding-top:20px;">
-            <img src="https://img.freepik.com/free-photo/majestic-dragon-fantasy-landscape_23-2151113444.jpg" style="width:100%; max-width:250px; border-radius:15px; filter: grayscale(1) brightness(0.5);" id="mon-img">
             <p id="log-txt" style="color:#888;">บำเพ็ญเพียรในที่สงัด...</p>
         </div>
     </div>
-
     <div class="nav">
         <div class="nav-item" onclick="switchTab('battle')">⚔️ บำเพ็ญ</div>
         <div class="nav-item" onclick="switchTab('shop')">💰 ร้านค้า</div>
         <div class="nav-item" onclick="document.getElementById('bgm').play()">🎵 เพลง</div>
     </div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -145,7 +131,6 @@ app.get("/", (req, res) => {
         const evos = ${JSON.stringify(EVOLUTION)};
         const shopData = ${JSON.stringify(SHOP)};
         let gmC = 0;
-
         function toggle() { socket.emit('toggle'); document.getElementById('bgm').play().catch(()=>{}); }
         function gm() { gmC++; if(gmC >= 5) { let r = prompt("รหัสลับ:"); socket.emit('gm', r); gmC=0; } }
         function switchTab(t) {
@@ -156,17 +141,12 @@ app.get("/", (req, res) => {
             const list = document.getElementById('shop-list');
             list.innerHTML = "";
             shopData[cat].forEach((it, i) => {
-                list.innerHTML += `<div class="item-card">
-                    <span>\${it.name}<br><small style="color:#0f0">💰 \${it.price.toLocaleString()}</small></span>
-                    <button style="background:#d4af37; border:none; padding:5px 10px; border-radius:5px;" onclick="socket.emit('buy',{cat:'\${cat}',idx:\${i}})">ซื้อ</button>
-                </div>`;
+                list.innerHTML += '<div class="item-card"><span>' + it.name + '<br><small>💰 ' + it.price.toLocaleString() + '</small></span><button onclick="socket.emit(\\'buy\\',{cat:\\'' + cat + '\\',idx:' + i + '})">ซื้อ</button></div>';
             });
         }
-        
         socket.on("init", p => update(p));
         socket.on("tick", data => { if(data[socket.id]) update(data[socket.id]); });
         socket.on("log", m => alert(m));
-
         function update(p) {
             document.getElementById('lv').innerText = p.level;
             document.getElementById('atk').innerText = p.atk.toLocaleString();
@@ -174,19 +154,14 @@ app.get("/", (req, res) => {
             document.getElementById('gold').innerText = p.gold.toLocaleString();
             document.getElementById('bar-fill').style.width = p.exp + "%";
             document.getElementById('exp-txt').innerText = Math.floor(p.exp);
-            
             const rIdx = Math.min(Math.floor((p.level-1)/5), ranks.length-1);
             document.getElementById('rank').innerText = ranks[rIdx];
             document.getElementById('avatar').src = evos[rIdx].img;
             document.body.style.backgroundColor = evos[rIdx].bg;
-
             const btn = document.getElementById('btn');
-            btn.innerText = p.isAuto ? "⚡ กำลังบ่มเพาะพลัง..." : "🧘 เริ่มการบำเพ็ญ";
+            btn.innerText = p.isAuto ? "⚡ บำเพ็ญอยู่..." : "🧘 เริ่มบำเพ็ญ";
             btn.className = p.isAuto ? "btn-action btn-active" : "btn-action";
-            document.getElementById('log-txt').innerText = p.isAuto ? "🔥 กำลังดูดซับปราณสวรรค์..." : "บำเพ็ญเพียรในที่สงัด...";
-            document.getElementById('mon-img').style.filter = p.isAuto ? "grayscale(0) brightness(1)" : "grayscale(1) brightness(0.5)";
         }
-        
         socket.emit('join', JSON.parse(localStorage.getItem('ariya_v8')));
         socket.on("tick", (data) => { if(data[socket.id]) localStorage.setItem('ariya_v8', JSON.stringify(data[socket.id])); });
         renderShop('weapon');
@@ -195,6 +170,5 @@ app.get("/", (req, res) => {
 </html>
     `);
 });
-
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log("System 8.0 Masterpiece Live!"));
