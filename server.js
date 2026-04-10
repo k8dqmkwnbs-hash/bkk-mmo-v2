@@ -7,73 +7,66 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const RANKS = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
 
-// ⚔️ ฟังก์ชันสร้างไอเทม 12 ชิ้นต่อหมวด (8 ปกติ + 4 หายาก)
-function generateItems(category, baseStat) {
-    let items = [];
-    for(let i=1; i<=12; i++) {
-        let isRare = i > 8;
-        items.push({
-            name: (isRare ? "⭐ " : "") + category + " ขั้นที่ " + i,
-            price: isRare ? Math.pow(i, 5) * 50 : i * i * 150,
-            stat: isRare ? i * i * 50 : i * 15,
-            type: baseStat,
-            rare: isRare
-        });
-    }
-    return items;
-}
-
-const ALL_ITEMS = {
-    weapon: generateItems("อาวุธเทพ", "atk"),
-    armor: generateItems("ชุดเซียน", "def"),
-    mount: generateItems("สัตว์เทพ", "atk"),
-    accessory: generateItems("เครื่องราง", "def")
-};
+// 🗺️ พื้นที่บำเพ็ญ 9 ระดับ (สอดคล้องกับขั้นพลัง)
+const MAPS = [
+    { name: "ป่าไผ่เขียว", req: 0, mult: 1, img: "https://images.unsplash.com/photo-1505820013142-f39b1e4da2ff?q=80&w=800" },
+    { name: "หุบเขาเมฆา", req: 5, mult: 2, img: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=800" },
+    { name: "ถ้ำลาวาอัคนี", req: 10, mult: 4, img: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=800" },
+    { name: "ทะเลสาบเหมันต์", req: 15, mult: 8, img: "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=800" },
+    { name: "สุสานกระบี่", req: 20, mult: 15, img: "https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?q=80&w=800" },
+    { name: "วิหารลอยฟ้า", req: 25, mult: 30, img: "https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=800" },
+    { name: "มิติกาลเวลา", req: 30, mult: 60, img: "https://images.unsplash.com/photo-1465101162946-4377e57745c3?q=80&w=800" },
+    { name: "แดนจุติเทพ", req: 35, mult: 120, img: "https://images.unsplash.com/photo-1506318137071-a8e063b4b0a1?q=80&w=800" },
+    { name: "ห้วงปฐมกาล", req: 40, mult: 250, img: "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?q=80&w=800" }
+];
 
 let players = {};
 
 setInterval(() => {
     Object.keys(players).forEach(id => {
         let p = players[id];
-        if (p.location !== "home") {
-            // 📈 สูตร EXP: เกินขั้น 5 (Level 25) จะขึ้นยากขึ้น 5 เท่า
-            let difficulty = p.level > 25 ? 5 : 1;
-            p.exp += (10 / difficulty); 
-            p.gold += (5 + Math.floor(p.level/2));
-            
-            if (p.exp >= 100) { 
-                p.level++; 
-                p.exp = 0; 
-                io.to(id).emit("log", "✨ บรรลุเลเวล " + p.level + "!");
-            }
+        if (p.isAuto) {
+            let m = MAPS[p.mapIdx];
+            // 📈 พลังเพิ่มตามเลเวลเลเวล: เลเวลยิ่งเยอะ ตัวคูณพลังยิ่งโหด
+            let lvMult = Math.pow(1.2, p.level);
+            p.exp += (2 * m.mult);
+            p.gold += (1 * m.mult);
+            p.atk = Math.floor((10 + (p.level * 5)) * lvMult);
+            p.def = Math.floor((5 + (p.level * 2)) * lvMult);
+
+            if (p.exp >= 100) { p.level++; p.exp = 0; }
         }
     });
     io.emit("update_all", players);
-}, 2000);
+}, 1000); // อัปเดตทุกวินาทีให้เห็นพลังวิ่งรัวๆ
 
 io.on("connection", (socket) => {
     socket.on("join", (save) => {
-        players[socket.id] = save || { level: 1, exp: 0, gold: 100, atk: 10, def: 10, location: "home", gear: [] };
+        players[socket.id] = save || { level: 1, exp: 0, gold: 0, atk: 10, def: 5, gear: [], mapIdx: 0, isAuto: false };
         socket.emit("update_client", players[socket.id]);
     });
 
-    socket.on("travel", (loc) => { if(players[socket.id]) players[socket.id].location = loc; });
-
-    socket.on("buy", (data) => {
-        let p = players[socket.id];
-        let item = ALL_ITEMS[data.cat][data.idx];
-        if(p && p.gold >= item.price) {
-            p.gold -= item.price;
-            p[item.type] += item.stat;
-            p.gear.push(item.name);
-            socket.emit("update_client", p);
-            socket.emit("log", "✅ ได้รับ " + item.name);
-        } else { socket.emit("log", "❌ ทองไม่พอ!"); }
+    socket.on("toggle_auto", () => {
+        if(players[socket.id]) {
+            players[socket.id].isAuto = !players[socket.id].isAuto;
+            socket.emit("update_client", players[socket.id]);
+        }
     });
 
-    socket.on("gm_power", () => {
+    socket.on("change_map", (idx) => {
         let p = players[socket.id];
-        if(p) { p.gold += 1000000; p.level += 20; socket.emit("update_client", p); }
+        if(p && p.level >= MAPS[idx].req) {
+            p.mapIdx = idx;
+            socket.emit("update_client", p);
+        }
+    });
+
+    socket.on("gm_secret", (code) => {
+        if(code === "ARIYA_GOD_MODE") {
+            let p = players[socket.id];
+            p.gold += 9999999; p.level += 10;
+            socket.emit("update_client", p);
+        }
     });
 
     socket.on("disconnect", () => delete players[socket.id]);
@@ -84,118 +77,132 @@ app.get("/", (req, res) => {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ARIYA IMMORTAL v4.0</title>
+    <title>IMMORTAL SAGA v5.0</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        body { background: #000; color: #d4af37; font-family: 'Tahoma'; text-align: center; margin: 0; }
-        .screen { display: none; padding: 15px; flex-direction: column; align-items: center; }
-        .active { display: flex; }
-        .btn { background: #d4af37; color: #000; border: none; padding: 12px; margin: 5px; cursor: pointer; border-radius: 5px; font-weight: bold; width: 90%; }
-        .rare { background: linear-gradient(90deg, #ff00ff, #d4af37) !important; color: #fff !important; border: 2px solid #fff; }
-        .bar { width: 280px; height: 15px; background: #222; border: 1px solid #d4af37; border-radius: 10px; overflow: hidden; margin: 10px; }
-        #exp-fill { background: #d4af37; height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px #d4af37; }
-        .item-list { width: 100%; height: 60vh; overflow-y: scroll; border: 1px solid #333; margin-top: 10px; }
-        .card { background: #111; border-bottom: 1px solid #333; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .tab-btn { background: #222; color: #d4af37; border: 1px solid #d4af37; padding: 5px; font-size: 11px; width: 23%; }
+        body { background: #000; color: #fff; font-family: 'Kanit', sans-serif; margin: 0; overflow: hidden; }
+        .bg { position: fixed; width: 100%; height: 100%; transition: 1s; z-index: -1; filter: brightness(0.3); background-size: cover; background-position: center; }
+        .ui-container { display: flex; flex-direction: column; align-items: center; height: 100vh; padding: 20px; box-sizing: border-box; }
+        
+        .status-card { background: rgba(0,0,0,0.7); border: 2px solid #d4af37; border-radius: 15px; padding: 15px; width: 100%; max-width: 400px; box-shadow: 0 0 20px #d4af37; }
+        .rank-name { font-size: 24px; color: #d4af37; font-weight: 600; text-shadow: 0 0 10px #d4af37; }
+        
+        .bar-wrap { background: #222; height: 20px; border-radius: 10px; margin: 10px 0; border: 1px solid #d4af37; overflow: hidden; position: relative; }
+        #exp-bar { background: linear-gradient(90deg, #d4af37, #fff); height: 100%; width: 0%; transition: 0.2s; }
+        
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; font-size: 14px; }
+        .stat-item { background: rgba(212, 175, 55, 0.2); padding: 5px; border-radius: 5px; }
+
+        .btn { background: #d4af37; color: #000; border: none; padding: 12px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; width: 100%; max-width: 300px; transition: 0.3s; font-size: 16px; }
+        .btn:active { transform: scale(0.95); }
+        .btn-auto { background: #ff4444; color: #fff; }
+        .btn-auto.active { background: #44ff44; color: #000; box-shadow: 0 0 15px #44ff44; }
+
+        .map-selector { display: flex; overflow-x: auto; width: 100%; max-width: 400px; padding: 10px 0; gap: 10px; }
+        .map-card { min-width: 100px; padding: 10px; background: #222; border: 1px solid #444; border-radius: 8px; font-size: 12px; cursor: pointer; }
+        .map-card.active { border-color: #d4af37; background: #332a00; }
+        .locked { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
+    <div id="bg-img" class="bg"></div>
     <audio id="bgm" loop src="https://www.chosic.com/wp-content/uploads/2021/07/The-Grand-Final-Epic-Modern-Chinese-Music.mp3"></audio>
 
-    <div id="home" class="screen active">
-        <h1 onclick="socket.emit('gm_power')" style="margin:5px;">🏯 สำนักปฐมกาล</h1>
-        <div style="background:rgba(255,255,255,0.1); padding:10px; border-radius:10px; width:90%;">
-            ⚔️ ATK: <b id="atk">0</b> | 🛡️ DEF: <b id="def">0</b> | 💰 ทอง: <b id="gold">0</b>
+    <div class="ui-container">
+        <div id="secret-trigger" style="height:20px; width:20px; align-self: flex-start;"></div>
+        
+        <div class="status-card">
+            <div id="rank-display" class="rank-name">รวบรวมลมปราณ</div>
+            <div style="font-size: 14px;">เลเวล: <span id="lv-display">1</span></div>
+            
+            <div class="bar-wrap"><div id="exp-bar"></div></div>
+            <div id="exp-text" style="font-size:10px; text-align:right; margin-top:-5px;">EXP: 0%</div>
+
+            <div class="stats-grid">
+                <div class="stat-item">⚔️ ATK: <b id="atk-display">10</b></div>
+                <div class="stat-item">🛡️ DEF: <b id="def-display">5</b></div>
+                <div class="stat-item">💰 ทอง: <b id="gold-display">0</b></div>
+                <div class="stat-item">📍 แผนที่: <b id="map-name">ป่าไผ่</b></div>
+            </div>
         </div>
-        <h2 id="rank" style="color:#fff; margin:10px 0;">รวบรวมลมปราณ</h2>
-        <div class="bar"><div id="exp-fill"></div></div>
-        <p id="exp-text" style="font-size:12px;">อีก 100 EXP เพื่อเลื่อนระดับ</p>
-        <button class="btn" onclick="showS('map')">🗺️ ออกเดินทาง / บำเพ็ญ</button>
-        <button class="btn" style="background:#8a6d3b" onclick="showS('shop')">💎 ตลาดมืด (4 หมวดเทพ)</button>
-        <button class="btn" style="background:#444; color:#fff;" onclick="document.getElementById('bgm').play()">🎵 เปิดเพลง</button>
-    </div>
 
-    <div id="map" class="screen">
-        <h2>🗺️ เลือกพื้นที่บำเพ็ญ</h2>
-        <button class="btn" onclick="travel('ป่าหมอก')">🌲 ป่าหมอก (LV 1-25)</button>
-        <button class="btn" onclick="travel('หุบเขาเทพ')">🌋 หุบเขาเทพ (LV 26++)</button>
-        <button class="btn" style="background:#444; color:#fff;" onclick="showS('home')">🏠 กลับสำนัก</button>
-    </div>
+        <h3 style="margin: 20px 0 5px;">📍 เลือกพื้นที่เก็บเลเวล</h3>
+        <div class="map-selector" id="map-list"></div>
 
-    <div id="battle" class="screen">
-        <h2 id="loc-display">กำลังสู้...</h2>
-        <img src="https://img.freepik.com/free-photo/majestic-dragon-fantasy-landscape_23-2151113444.jpg" style="width:250px; border-radius:15px; border:2px solid #d4af37;">
-        <div class="bar"><div id="exp-fill2" style="background:#d4af37; height:100%;"></div></div>
-        <p id="exp-text2">บำเพ็ญเพียรอัตโนมัติ...</p>
-        <button class="btn" onclick="travel('home')">🏠 กลับสำนัก</button>
-    </div>
-
-    <div id="shop" class="screen">
-        <div style="display:flex; justify-content:space-between; width:100%;">
-            <button class="tab-btn" onclick="loadShop('weapon')">อาวุธ</button>
-            <button class="tab-btn" onclick="loadShop('armor')">ชุด</button>
-            <button class="tab-btn" onclick="loadShop('mount')">สัตว์ขี่</button>
-            <button class="tab-btn" onclick="loadShop('accessory')">เครื่องประดับ</button>
-        </div>
-        <div id="shop-items" class="item-list"></div>
-        <button class="btn" onclick="showS('home')">🏠 กลับสำนัก</button>
+        <button id="auto-btn" class="btn btn-auto" onclick="toggleAuto()">⭕ เริ่มบำเพ็ญ (AUTO)</button>
+        <button class="btn" onclick="startSystem()">🎵 รีเซ็ตเสียง/ฉาก</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const ranks = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
-        const allItems = ${JSON.stringify(ALL_ITEMS)};
-
-        function showS(id) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
+        const ranks = ${JSON.stringify(RANKS)};
+        const maps = ${JSON.stringify(MAPS)};
+        
+        function startSystem() {
+            document.getElementById('bgm').play().catch(()=>{});
         }
 
-        function travel(loc) {
-            if(loc === 'home') showS('home'); else showS('battle');
-            socket.emit('travel', loc);
-            document.getElementById('loc-display').innerText = loc;
+        function toggleAuto() {
+            socket.emit('toggle_auto');
+            startSystem();
         }
 
-        function loadShop(cat) {
-            const list = document.getElementById('shop-items');
-            list.innerHTML = "";
-            allItems[cat].forEach((it, i) => {
-                list.innerHTML += \`
-                    <div class="card">
-                        <div style="text-align:left">
-                            <b style="color:\${it.rare?'#ff00ff':'#d4af37'}">\${it.name}</b><br>
-                            <small>💰 \${it.price} | +\${it.stat} \${it.type.toUpperCase()}</small>
-                        </div>
-                        <button class="btn \${it.rare?'rare':''}" style="width:70px; font-size:10px;" onclick="socket.emit('buy',{cat:'\${cat}',idx:\${i}})">ซื้อ</button>
-                    </div>\`;
-            });
-        }
-
-        let saved = JSON.parse(localStorage.getItem('immortal_v4'));
-        socket.emit('join', saved);
+        // 🤫 GM SECRET: กดค้างที่มุมซ้ายบน 3 วินาที
+        let gmTimer;
+        const trigger = document.getElementById('secret-trigger');
+        trigger.addEventListener('touchstart', () => {
+            gmTimer = setTimeout(() => {
+                let p = prompt("ระบุรหัสเจ้าสำนัก:");
+                socket.emit('gm_secret', p);
+            }, 3000);
+        });
+        trigger.addEventListener('touchend', () => clearTimeout(gmTimer));
 
         socket.on("update_client", (p) => {
-            localStorage.setItem('immortal_v4', JSON.stringify(p));
-            document.getElementById('atk').innerText = p.atk;
-            document.getElementById('def').innerText = p.def;
-            document.getElementById('gold').innerText = Math.floor(p.gold);
+            localStorage.setItem('ariya_final_save', JSON.stringify(p));
+            document.getElementById('lv-display').innerText = p.level;
+            document.getElementById('gold-display').innerText = Math.floor(p.gold);
+            document.getElementById('atk-display').innerText = p.atk.toLocaleString();
+            document.getElementById('def-display').innerText = p.def.toLocaleString();
+            document.getElementById('exp-bar').style.width = p.exp + "%";
+            document.getElementById('exp-text').innerText = "EXP: " + Math.floor(p.exp) + "%";
             
-            let expLeft = 100 - Math.floor(p.exp);
-            document.getElementById('exp-text').innerText = "ขาดอีก " + expLeft + " EXP เพื่อบรรลุขั้นถัดไป";
-            document.getElementById('exp-text2').innerText = "อีก " + expLeft + " EXP จะอัปเวล...";
-            document.getElementById('exp-fill').style.width = p.exp + "%";
-            document.getElementById('exp-fill2').style.width = p.exp + "%";
+            const rIdx = Math.min(Math.floor((p.level-1)/5), ranks.length-1);
+            document.getElementById('rank-display').innerText = ranks[rIdx];
+            document.getElementById('rank-display').style.color = rIdx >= 5 ? '#00ffff' : '#d4af37';
             
-            let rIdx = Math.min(Math.floor((p.level-1)/5), ranks.length-1);
-            document.getElementById('rank').innerText = ranks[rIdx] + " (Lv."+p.level+")";
-            document.getElementById('rank').style.color = p.level > 25 ? '#00ffff' : '#fff';
+            document.getElementById('bg-img').style.backgroundImage = "url('" + maps[p.mapIdx].img + "')";
+            document.getElementById('map-name').innerText = maps[p.mapIdx].name;
+
+            const btn = document.getElementById('auto-btn');
+            if(p.isAuto) {
+                btn.innerText = "✅ กำลังบำเพ็ญอัตโนมัติ...";
+                btn.classList.add('active');
+            } else {
+                btn.innerText = "⭕ เริ่มบำเพ็ญ (AUTO)";
+                btn.classList.remove('active');
+            }
+
+            // Render Map List
+            const list = document.getElementById('map-list');
+            list.innerHTML = "";
+            maps.forEach((m, i) => {
+                const isLocked = p.level < m.req;
+                list.innerHTML += `
+                    <div class="map-card ${isLocked ? 'locked' : ''} ${p.mapIdx === i ? 'active' : ''}" 
+                         onclick="${isLocked ? '' : `socket.emit('change_map', ${i})`}">
+                        <b>${m.name}</b><br>
+                        ${isLocked ? `🔒 Lv. ${m.req}` : `🔥 x${m.mult}`}
+                    </div>`;
+            });
         });
 
+        let saved = JSON.parse(localStorage.getItem('ariya_final_save'));
+        socket.emit('join', saved);
+
         socket.on("update_all", (data) => { if(data[socket.id]) socket.emit('update_client', data[socket.id]); });
-        socket.on("log", (m) => console.log(m));
-        loadShop('weapon'); // โหลดหมวดอาวุธรอไว้
     </script>
 </body>
 </html>
@@ -203,4 +210,4 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Immortal System v4.0 Active!"));
+server.listen(PORT, () => console.log("Immortal Saga 5.0 Live!"));
