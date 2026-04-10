@@ -6,16 +6,10 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 const RANKS = ["รวบรวมลมปราณ", "ก่อตั้งรากฐาน", "หลอมรวมแก่นทอง", "วิญญาณก่อกำเนิด", "ตัดพ้นปุถุชน", "จุติเทพ", "มหาเทพนิรันดร์", "ราชันย์เทวะ", "ปฐมกาลไร้ขอบเขต"];
-const REALMS = [
-    { name: "Aetheria (แดนแสง)", q: "ตามหาผลึกเสียงสวรรค์", c: "#ffd700" },
-    { name: "Void Abyss (แดนทมิฬ)", q: "ปราบขุนพลเงา", c: "#4b0082" },
-    { name: "Neon Chronos (โลกอนาคต)", q: "ไขปริศนาไซเบอร์", c: "#00f2ff" }
-];
-
+const REALMS = [{ n: "Aetheria", q: "ตามหาผลึกเสียงสวรรค์" }, { n: "Void Abyss", q: "ปราบขุนพลเงา" }, { n: "Neon Chronos", q: "ไขปริศนาไซเบอร์" }];
 const SHOP = {
-    weapon: [{ n: "ดาบสะบั้นดารา", p: 500000, v: 50000 }, { n: "ทวนมังกรฟ้า", p: 2000000, v: 150000 }],
-    armor: [{ n: "เกราะฟีนิกซ์", p: 450000, v: 30000 }, { n: "เกราะเทพสงคราม", p: 1800000, v: 120000 }],
-    soul: [{ n: "แก่นปราณนิรันดร์", p: 5000000, v: 300000 }, { n: "ยาพระเจ้า", p: 100000, v: 5000 }]
+    weapon: [{ n: "ดาบสะบั้นดารา", p: 100000, v: 50000 }, { n: "ทวนมังกรฟ้า", p: 500000, v: 150000 }],
+    armor: [{ n: "เกราะฟีนิกซ์", p: 80000, v: 30000 }, { n: "ชุดเกราะเทพ", p: 400000, v: 120000 }]
 };
 
 let players = {};
@@ -25,17 +19,14 @@ setInterval(() => {
         let p = players[id];
         if (p.isAuto) {
             p.age = Math.min(10000, (p.age || 12) + 1);
-            p.exp += (15 / (Math.floor(p.level/5)+1));
+            p.exp += (20 / (Math.floor(p.level/5)+1));
             if (p.exp >= 100) { p.level++; p.exp = 0; }
             let rIdx = Math.min(Math.floor((p.level-1)/10), RANKS.length-1);
-            let mIdx = p.level % 3;
-            p.realm = REALMS[mIdx].name;
-            p.quest = REALMS[mIdx].q;
-            p.atk = (p.bAtk + (p.level * 2000)) * (rIdx + 1);
-            p.def = (p.bDef + (p.level * 1000)) * (rIdx + 1);
-            p.mag = (p.bMag + (p.level * 3000)) * (rIdx + 1);
-            p.spd = (p.bSpd + (p.level * 500)) * (rIdx + 1);
-            p.gold += (p.level * 1500);
+            p.realm = REALMS[p.level % 3].n;
+            p.quest = REALMS[p.level % 3].q;
+            p.atk = (p.bAtk + (p.level * 2500)) * (rIdx + 1);
+            p.def = (p.bDef + (p.level * 1200)) * (rIdx + 1);
+            p.gold += (p.level * 2000);
         }
     });
     io.emit("tick", players);
@@ -43,120 +34,96 @@ setInterval(() => {
 
 io.on("connection", (socket) => {
     socket.on("join", (s) => {
-        players[socket.id] = s || { level: 1, exp: 0, gold: 50000, age: 12, bAtk: 5000, bDef: 2000, bMag: 8000, bSpd: 1000, isAuto: false };
+        players[socket.id] = s || { level: 1, exp: 0, gold: 10000, age: 12, bAtk: 5000, bDef: 2000, isAuto: false };
         socket.emit("init", players[socket.id]);
     });
     socket.on("toggle", () => { if(players[socket.id]) players[socket.id].isAuto = !players[socket.id].isAuto; });
     socket.on("buy", (d) => {
         let p = players[socket.id]; let it = SHOP[d.c][d.i];
-        if(p && p.gold >= it.p) {
-            p.gold -= it.p;
-            if(d.c === 'weapon') p.bAtk += it.v;
-            else if(d.c === 'armor') p.bDef += it.v;
-            else { p.bMag += it.v; p.bSpd += (it.v/10); }
-        }
+        if(p && p.gold >= it.p) { p.gold -= it.p; if(d.c === 'weapon') p.bAtk += it.v; else p.bDef += it.v; }
     });
     socket.on("disconnect", () => delete players[socket.id]);
 });
 
 app.get("/", (req, res) => {
-    res.send(\`
+    res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ARIYA AI IMMORTAL v14.0</title>
+    <title>ARIYA GOD MODE v15.0</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;700&display=swap" rel="stylesheet">
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Kanit', sans-serif; background: #000; }
-        .bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: url('http://googleusercontent.com/generated_image_content/0') center/cover; z-index: -1; transform: scale(1.1); filter: brightness(0.6); }
-        .content { position: relative; z-index: 10; height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; color: #fff; }
-        .card { background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); border: 2px solid #ffd700; border-radius: 20px; padding: 20px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 0 30px rgba(255,215,0,0.3); }
-        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 15px 0; font-size: 13px; }
-        .st-box { background: rgba(255,255,255,0.1); padding: 8px; border-radius: 10px; border-left: 3px solid #ffd700; }
-        .nav { position: fixed; bottom: 0; width: 100%; display: flex; background: rgba(0,0,0,0.9); border-top: 1px solid #ffd700; height: 70px; }
-        .nav-i { flex: 1; display: flex; align-items: center; justify-content: center; color: #666; cursor: pointer; }
-        .active { color: #ffd700; font-weight: 700; }
-        .btn { background: linear-gradient(45deg, #d4af37, #f9d976); color: #000; border: none; padding: 12px; border-radius: 10px; width: 100%; font-weight: 700; cursor: pointer; }
-        .shop-it { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; font-size: 14px; }
+        body, html { margin:0; padding:0; height:100%; overflow:hidden; font-family:'Kanit'; background:#000; }
+        .bg { position:fixed; width:100%; height:100%; background:url('https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=80&w=1200') center/cover; z-index:-1; filter:brightness(0.5); }
+        .main { position:relative; z-index:10; height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px; box-sizing:border-box; color:#fff; }
+        .card { background:rgba(0,0,0,0.8); backdrop-filter:blur(10px); border:2px solid #ffd700; border-radius:20px; padding:20px; width:100%; max-width:400px; text-align:center; }
+        .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:15px 0; }
+        .nav { position:fixed; bottom:0; width:100%; display:flex; background:#000; border-top:1px solid #ffd700; height:60px; }
+        .nav-btn { flex:1; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#666; }
+        .active { color:#ffd700; font-weight:700; }
+        .btn { background:#ffd700; color:#000; border:none; padding:12px; border-radius:10px; width:100%; font-weight:700; cursor:pointer; }
     </style>
 </head>
 <body>
     <div class="bg"></div>
-    <div class="content">
-        <div id="t-status" class="card">
-            <div style="color:#ffd700; font-size:12px;">ปีบำเพ็ญ: <span id="age">12</span> / 10,000</div>
-            <div id="realm" style="font-size:10px; opacity:0.7">มิติ: ...</div>
+    <div class="main">
+        <div id="p-status" class="card">
+            <div style="color:#ffd700; font-size:12px;">อายุ: <span id="age">12</span> / 10,000 ปี</div>
             <h2 id="rank" style="color:#ffd700; margin:10px 0;">รวบรวมลมปราณ</h2>
-            <div style="background:rgba(212,175,55,0.2); padding:5px; border-radius:5px; font-size:11px; margin-bottom:10px;">📜 <span id="quest">...</span></div>
-            <div style="font-size:11px">เลเวล <span id="lv">1</span> | <span id="exp">0</span>%</div>
-            <div style="width:100%; height:6px; background:#333; margin:8px 0; border-radius:3px; overflow:hidden;"><div id="bar" style="height:100%; background:#ffd700; width:0%"></div></div>
+            <div style="background:rgba(255,215,0,0.2); padding:5px; border-radius:5px; font-size:12px; margin-bottom:10px;">📜 <span id="quest">...</span></div>
             <div class="stats">
-                <div class="st-box">⚔️ ATK: <b id="atk">0</b></div>
-                <div class="st-box">🛡️ DEF: <b id="def">0</b></div>
-                <div class="st-box">✨ MAG: <b id="mag">0</b></div>
-                <div class="st-box">⚡ SPD: <b id="spd">0</b></div>
+                <div style="border-left:3px solid #ffd700; padding:5px;">⚔️ ATK: <br><b id="atk">0</b></div>
+                <div style="border-left:3px solid #ffd700; padding:5px;">🛡️ DEF: <br><b id="def">0</b></div>
             </div>
-            <div style="color:#ffd700; font-size:18px; margin-bottom:10px;">💰 ทอง: <span id="gold">0</span></div>
-            <button class="btn" onclick="socket.emit('toggle')">🧘 บำเพ็ญเพียร</button>
+            <div style="color:#ffd700; font-size:20px; margin-bottom:15px;">💰 ทอง: <span id="gold">0</span></div>
+            <button class="btn" onclick="socket.emit('toggle')">🧘 เริ่มบำเพ็ญเพียร (BGM On)</button>
         </div>
-
-        <div id="t-shop" class="card" style="display:none">
-            <h3 style="color:#ffd700">💎 หอสมบัติมิติ</h3>
-            <div id="shop-c" style="height:280px; overflow-y:auto; text-align:left"></div>
+        <div id="p-shop" class="card" style="display:none">
+            <h3 style="color:#ffd700">🛒 หอสมบัติมิติ</h3>
+            <div id="shop-c" style="height:300px; overflow-y:auto; text-align:left"></div>
         </div>
     </div>
-
     <div class="nav">
-        <div id="n1" class="nav-i active" onclick="show('status')">🏯 สถานะ</div>
-        <div id="n2" class="nav-i" onclick="show('shop')">🛒 ร้านค้า</div>
+        <div id="b1" class="nav-btn active" onclick="show('status')">🏯 สถานะ</div>
+        <div id="b2" class="nav-btn" onclick="show('shop')">🛒 ร้านค้า</div>
     </div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         const ranks = ${JSON.stringify(RANKS)};
         const shop = ${JSON.stringify(SHOP)};
         function show(t) {
-            document.getElementById('t-status').style.display = t==='status'?'block':'none';
-            document.getElementById('t-shop').style.display = t==='shop'?'block':'none';
-            document.getElementById('n1').className = t==='status'?'nav-i active':'nav-i';
-            document.getElementById('n2').className = t==='shop'?'nav-i active':'nav-i';
+            document.getElementById('p-status').style.display = t==='status'?'block':'none';
+            document.getElementById('p-shop').style.display = t==='shop'?'block':'none';
+            document.getElementById('b1').className = t==='status'?'nav-btn active':'nav-btn';
+            document.getElementById('b2').className = t==='shop'?'nav-btn active':'nav-btn';
             if(t==='shop') render();
         }
         function render() {
-            let h = '';
-            for(let c in shop) {
+            let h = ''; for(let c in shop) {
                 shop[c].forEach((it, i) => {
-                    h += \`<div class="shop-it"><span>\${it.n}<br><small style="color:#ffd700">\${it.p.toLocaleString()} ทอง</small></span>
-                    <button onclick="socket.emit('buy',{c:'\${c}',i:\${i}})" style="background:#ffd700; border:none; border-radius:5px; padding:5px 10px;">ซื้อ</button></div>\`;
+                    h += '<div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #333;">' +
+                    '<span>'+it.n+'<br><small style="color:#ffd700">'+it.p.toLocaleString()+' ทอง</small></span>' +
+                    '<button onclick="socket.emit(\\'buy\\',{c:\\''+c+'\\',i:'+i+'})" style="background:#ffd700; border:none; border-radius:5px; padding:5px 10px;">ซื้อ</button></div>';
                 });
-            }
-            document.getElementById('shop-c').innerHTML = h;
+            } document.getElementById('shop-c').innerHTML = h;
         }
         socket.on("tick", data => {
             const p = data[socket.id]; if(!p) return;
             document.getElementById('age').innerText = p.age.toLocaleString();
-            document.getElementById('lv').innerText = p.level;
-            document.getElementById('exp').innerText = Math.floor(p.exp);
-            document.getElementById('bar').style.width = p.exp + "%";
             document.getElementById('atk').innerText = p.atk.toLocaleString();
             document.getElementById('def').innerText = p.def.toLocaleString();
-            document.getElementById('mag').innerText = p.mag.toLocaleString();
-            document.getElementById('spd').innerText = p.spd.toLocaleString();
             document.getElementById('gold').innerText = p.gold.toLocaleString();
-            document.getElementById('realm').innerText = "มิติ: " + p.realm;
-            document.getElementById('quest').innerText = p.quest;
-            const rIdx = Math.min(Math.floor((p.level-1)/10), ranks.length-1);
-            document.getElementById('rank').innerText = ranks[rIdx];
-            localStorage.setItem('ariya_save', JSON.stringify(p));
+            document.getElementById('quest').innerText = p.realm + ": " + p.quest;
+            document.getElementById('rank').innerText = ranks[Math.min(Math.floor((p.level-1)/10), ranks.length-1)];
+            localStorage.setItem('ariya_god', JSON.stringify(p));
         });
-        socket.emit('join', JSON.parse(localStorage.getItem('ariya_save')));
+        socket.emit('join', JSON.parse(localStorage.getItem('ariya_god')));
     </script>
 </body>
 </html>
-    \`);
+    `);
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("v14.0 Ready"));
+server.listen(process.env.PORT || 3000);
